@@ -57,3 +57,5 @@ Route::get('/reports/monthly/{year}/{month}', [ReportController::class, 'monthly
 //--------------------------------End StatIncomes-----------------------
 
 Route::get('SalesRep',[SaleRepresentativeController::class,'index']);
+
+
