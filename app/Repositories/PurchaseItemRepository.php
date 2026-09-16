@@ -16,14 +16,20 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use Illuminate\Support\Facades\DB;
 use App\Models\Medicine;
+use App\Models\Status;
+use App\Enums\PurchaseStatus;
+use App\Services\PurchaseLifecycle;
+use App\Services\Money;
 
 class PurchaseItemRepository implements PurchaseItemsRepositoryInterface
 {
     protected MedicineRepositoryInterface $medicines;
+    protected PurchaseLifecycle $lifecycle;
 
-    public function __construct(MedicineRepositoryInterface $medicines)
+    public function __construct(MedicineRepositoryInterface $medicines, PurchaseLifecycle $lifecycle)
     {
         $this->medicines = $medicines;
+        $this->lifecycle = $lifecycle;
     }
 
     /**
@@ -104,7 +110,7 @@ class PurchaseItemRepository implements PurchaseItemsRepositoryInterface
             'sale_representative_id' => $items['sale_representative_id'],
             'warehouse_id'           => $saleRep->warehouse_id,
             'purchase_date'          => now(),
-            'status_id'              => '1',
+            'status_id'              => Status::idFor(PurchaseStatus::Requested),
         ]);
     }
 
@@ -175,7 +181,11 @@ class PurchaseItemRepository implements PurchaseItemsRepositoryInterface
         $sheet->getProtection()->setDeleteColumns(false);
 
         $filename = "SupplyOrder_{$purchase->id}.xlsx";
-        $path = storage_path("app/public/{$filename}");
+        $directory = storage_path('app/private/supply-orders');
+        if (!is_dir($directory)) {
+            mkdir($directory, 0700, true);
+        }
+        $path = "{$directory}/{$filename}";
 
         $writer = new Xlsx($spreadsheet);
         $writer->save($path);
@@ -191,8 +201,12 @@ class PurchaseItemRepository implements PurchaseItemsRepositoryInterface
             return $check;
         }
 
-        $purchase      = $this->CreatePurchase($items);
-        $purchaseItems = $this->CreatePurchaseItems($purchase, $check['data']);
+        [$purchase, $purchaseItems] = DB::transaction(function () use ($items, $check) {
+            $purchase = $this->CreatePurchase($items);
+            $purchaseItems = $this->CreatePurchaseItems($purchase, $check['data']);
+            $this->lifecycle->recordCreation($purchase, Auth::user());
+            return [$purchase, $purchaseItems];
+        }, 3);
         $filePath      = $this->export($purchaseItems, $purchase);
 
         $representative = SaleRepresentative::find($items['sale_representative_id']);
@@ -205,98 +219,93 @@ class PurchaseItemRepository implements PurchaseItemsRepositoryInterface
         return ['message' => 'Request sent successfully'];
     }
 
- public function ImportPricedSupplyOrder($filePath)
-{
-    $spreadsheet = IOFactory::load($filePath);
-    $sheet = $spreadsheet->getActiveSheet();
+ public function ImportPricedSupplyOrder($filePath, ?int $expectedPurchaseId = null)
+ {
+     try {
+         $sheet = IOFactory::load($filePath)->getActiveSheet();
+         $headers = ['Purchase_id', 'Medicine_id', 'Medicine Name', 'Quantity', 'Price'];
+         foreach ($headers as $column => $header) {
+             if (trim((string) $sheet->getCell(chr(65 + $column).'1')->getValue()) !== $header) {
+                 return ['status' => false, 'message' => 'Invalid priced order headers. Price must be the line total.'];
+             }
+         }
+         $purchaseId = trim((string) $sheet->getCell('A2')->getCalculatedValue());
+         if (!ctype_digit($purchaseId)) {
+             return ['status' => false, 'message' => 'Invalid purchase ID.'];
+         }
+         if ($expectedPurchaseId !== null && (int) $purchaseId !== $expectedPurchaseId) {
+             return ['status' => false, 'message' => 'File belongs to another purchase.'];
+         }
+         $lastRow = (int) $sheet->getHighestDataRow();
+         $lines = [];
+         for ($row = 2; $row <= $lastRow; $row++) {
+             $rowPurchase = trim((string) $sheet->getCell("A{$row}")->getCalculatedValue());
+             $medicineId = trim((string) $sheet->getCell("B{$row}")->getCalculatedValue());
+             $fileQuantity = trim((string) $sheet->getCell("D{$row}")->getCalculatedValue());
+             $rawPrice = trim((string) $sheet->getCell("E{$row}")->getCalculatedValue());
+             $name = trim((string) $sheet->getCell("C{$row}")->getCalculatedValue());
+             if ($rowPurchase === '' && $medicineId === '' && $name === '' && $fileQuantity === '' && $rawPrice === '') {
+                 continue;
+             }
+             if ($rowPurchase !== $purchaseId || !ctype_digit($medicineId)
+                 || !ctype_digit($fileQuantity) || (int) $fileQuantity < 1
+                 || !preg_match('/^\d+(?:\.\d{1,2})?$/', $rawPrice)
+                 || Money::cents($rawPrice) <= 0 || isset($lines[(int) $medicineId])) {
+                 return ['status' => false, 'message' => 'Invalid or duplicate item in priced order.'];
+             }
+             $lines[(int) $medicineId] = ['total_cents' => Money::cents($rawPrice), 'quantity' => (int) $fileQuantity, 'name' => $name];
+         }
+         if (!$lines) {
+             return ['status' => false, 'message' => 'No items found in file.'];
+         }
+         ksort($lines, SORT_NUMERIC);
 
-    $purchaseId = trim((string) $sheet->getCell('A2')->getCalculatedValue());
-    if ($purchaseId === '') {
-        return ['status' => false, 'message' => 'Purchase ID not found in file'];
-    }
-
-    // Only iterate over rows that actually have data in A, B, or E
-    $lastRow = max(
-        (int) $sheet->getHighestDataRow('A'),
-        (int) $sheet->getHighestDataRow('B'),
-        (int) $sheet->getHighestDataRow('E')
-    );
-    if ($lastRow < 2) {
-        return ['status' => false, 'message' => 'No items found in file'];
-    }
-
-    $errors = [];
-    DB::beginTransaction();
-
-    try {
-        for ($row = 2; $row <= $lastRow; $row++) {
-            $medicineId = trim((string) $sheet->getCell("B{$row}")->getCalculatedValue());
-            $rawPrice   = $sheet->getCell("E{$row}")->getFormattedValue(); // what user sees (may be text)
-
-            // Skip empty lines
-            if ($medicineId === '' && (is_null($rawPrice) || trim((string)$rawPrice) === '')) {
-                continue;
-            }
-
-            // Normalize the line TOTAL value (accept 1 200, 1,200.50, 1200,50, etc.)
-            $priceStr  = trim((string) $rawPrice);
-            $priceStr  = preg_replace('/[^\d,.\-]/', '', $priceStr);
-            $priceStr  = str_replace(',', '.', $priceStr);
-            $lineTotal = is_numeric($priceStr) ? (float) $priceStr : null;
-
-            if ($medicineId === '' || !ctype_digit($medicineId)) {
-                $errors[] = "Row {$row}: invalid or empty medicine ID.";
-                continue;
-            }
-            if ($lineTotal === null || $lineTotal <= 0) {
-                $errors[] = "Row {$row}: invalid total price '{$rawPrice}' for medicine ID {$medicineId}.";
-                continue;
-            }
-
-            /** @var PurchaseItem|null $purchaseItem */
-            $purchaseItem = PurchaseItem::where('purchase_id', (int)$purchaseId)
-                ->where('medicine_id', (int)$medicineId)
-                ->first();
-
-            if (!$purchaseItem) {
-                $errors[] = "Row {$row}: item not found for medicine ID {$medicineId} in purchase {$purchaseId}.";
-                continue;
-            }
-
-            $qty = max(1, (int) $purchaseItem->quantity);
-
-            // === compute UNIT price from line TOTAL ===
-            $unitPrice = round($lineTotal / $qty, 2);
-
-            // Save unit price on purchase item (price column = unit price)
-            $purchaseItem->price = $unitPrice;
-            $purchaseItem->save();
-
-            // === increase medicine stock ===
-            $medicine = Medicine::find((int)$medicineId);
-            if ($medicine) {
-                $medicine->increment('quantity_in_stock', $qty);
-
-                // OPTIONAL: update catalog/unit price on the medicine record
-                $medicine->price = $unitPrice;
-                $medicine->save();
-            }
-        }
-
-        if (!empty($errors)) {
-            DB::rollBack();
-            return ['status' => false, 'message' => 'Import finished with errors.', 'errors' => $errors];
-        }
-
-        // Mark purchase as "priced"
-        $purchase = Purchase::findOrFail((int)$purchaseId);
-        $purchase->status_id = 2;
-        $purchase->save();
-
-        DB::commit();
-        return ['status' => true, 'message' => 'Prices imported, stock updated, and unit prices set.'];
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        return ['status' => false, 'message' => 'Unexpected error: '.$e->getMessage()];
-    }}
+         return DB::transaction(function () use ($purchaseId, $lines) {
+             $purchase = Purchase::whereKey((int) $purchaseId)->lockForUpdate()->first();
+             if (!$purchase) {
+                 return ['status' => false, 'message' => 'Purchase not found.'];
+             }
+             if ($purchase->statusCode() !== PurchaseStatus::Requested) {
+                 return ['status' => false, 'message' => 'Purchase has already been processed.'];
+             }
+             $items = PurchaseItem::where('purchase_id', $purchase->id)->orderBy('id')->lockForUpdate()->get();
+             $purchaseItems = [];
+             foreach ($items as $item) {
+                 if (isset($purchaseItems[(int) $item->medicine_id])) {
+                     return ['status' => false, 'message' => 'Duplicate medicine in purchase.'];
+                 }
+                 $purchaseItems[(int) $item->medicine_id] = $item;
+             }
+             $expected = array_keys($purchaseItems);
+             $provided = array_keys($lines);
+             sort($expected, SORT_NUMERIC);
+             sort($provided, SORT_NUMERIC);
+             if ($expected !== $provided) {
+                 return ['status' => false, 'message' => 'Priced file does not match purchase items.'];
+             }
+             foreach ($provided as $id) {
+                 $medicine = Medicine::find($id);
+                 if (!$medicine || $lines[$id]['name'] !== $medicine->name
+                     || (int) $purchaseItems[$id]->quantity < 1
+                     || (int) $purchaseItems[$id]->quantity !== $lines[$id]['quantity']
+                     || $lines[$id]['total_cents'] % $lines[$id]['quantity'] !== 0) {
+                     return ['status' => false, 'message' => 'Invalid purchase item or medicine.'];
+                 }
+             }
+             foreach ($lines as $id => $line) {
+                 $item = $purchaseItems[$id];
+                 $unitPrice = Money::decimal(intdiv($line['total_cents'], $line['quantity']));
+                 $item->price = $unitPrice;
+                 if (!$item->save()) {
+                     throw new \RuntimeException('Unable to update supply item price');
+                 }
+             }
+             $this->lifecycle->transitionLocked($purchase, PurchaseStatus::Priced, Auth::user());
+             return ['status' => true, 'message' => 'Prices imported; stock awaits batch receipt.'];
+         }, 3);
+     } catch (\Throwable $e) {
+         report($e);
+         return ['status' => false, 'message' => 'Priced order could not be imported.', 'http_status' => 500];
+     }
+ }
 }

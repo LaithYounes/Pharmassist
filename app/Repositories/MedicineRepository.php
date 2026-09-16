@@ -5,6 +5,8 @@ namespace App\Repositories;
 use App\Models\Category;
 use App\Models\Medicine;
 use App\Repositories\Interfaces\MedicineRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 
 class MedicineRepository implements MedicineRepositoryInterface
@@ -27,6 +29,11 @@ class MedicineRepository implements MedicineRepositoryInterface
     public function update($id, array $data)
     {
         $medicine = Medicine::findOrFail($id);
+        if (array_key_exists('quantity_in_stock', $data) && $medicine->batches()->exists()) {
+            throw ValidationException::withMessages([
+                'quantity_in_stock' => 'Batch-managed stock cannot be changed directly.',
+            ]);
+        }
         $medicine->update($data);
         $medicine->refresh();
         return $medicine;
@@ -35,7 +42,10 @@ class MedicineRepository implements MedicineRepositoryInterface
     public function delete($id)
     {
         $medicine = Medicine::findOrFail($id);
-        return $medicine->delete();
+        return DB::transaction(function () use ($medicine) {
+            $medicine->categories()->detach();
+            return $medicine->delete();
+        });
     }
 
     public function findByName(string $name)

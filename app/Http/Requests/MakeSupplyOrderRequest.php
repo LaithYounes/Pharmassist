@@ -30,6 +30,8 @@ public function prepareForValidation(): void
         'items'                    => 'required|array|min:1',
         'items.*.medicine_name'    => 'required|string|max:255',
         'items.*.quantity'         => 'required|integer|min:1',
+        'status'                    => 'prohibited',
+        'status_id'                 => 'prohibited',
     ];
 }
 }

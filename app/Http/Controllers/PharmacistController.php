@@ -11,7 +11,7 @@ use App\Models\Pharmacist;
 use App\Models\SaleItem;
 use App\Repositories\Interfaces\PharmacistRepositoryInterface;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Gate;
 
 class PharmacistController extends Controller
 {
@@ -26,6 +26,7 @@ class PharmacistController extends Controller
 
     public function store(RegisterPharmacistRequest $request)
     {
+        Gate::authorize('manage-pharmacy');
         return $this->pharmacistRepository->register($request->validated());
 
     }
@@ -37,26 +38,12 @@ class PharmacistController extends Controller
 
 
    public function update(UpdatePharmacistRequest $request, int $id){
-    $data = $request->validated();
-
-    // معالجة كلمة المرور إن وُجدت
-    if (array_key_exists('password', $data)) {
-        if (empty($data['password'])) {
-            unset($data['password']);
-        } else {
-            $data['password'] = Hash::make($data['password']);
-        }
-    }
-
-    // استدعاء الريبو الصحيح
-    $pharmacist = $this->pharmacistRepository->update($id, $data);
-
-    // عدم إرجاع كلمة المرور
-    unset($pharmacist->password);
+    Gate::authorize('manage-pharmacy');
+    $pharmacist = $this->pharmacistRepository->update($id, $request->validated());
 
     return response()->json([
         'message'     => 'Pharmacist updated successfully',
-        'pharmacist'  => $pharmacist,
+        'pharmacist'  => $pharmacist->makeHidden('password'),
     ]);
 }
 
@@ -64,6 +51,7 @@ class PharmacistController extends Controller
 
     public function destroy(int $id)
 {
+    Gate::authorize('manage-pharmacy');
     try {
         $this->pharmacistRepository->delete($id);
 
@@ -79,6 +67,7 @@ class PharmacistController extends Controller
 
 
     public function create(RegisterPharmacistRequest $request){
+        Gate::authorize('manage-pharmacy');
         return $this->pharmacistRepository->register($request->validated());
 
     }
@@ -91,6 +80,7 @@ class PharmacistController extends Controller
     }
 
     public function GetPharmacistSales(){
+       Gate::authorize('pharmacy-work');
        $saleItems= $this->pharmacistRepository->GetPharmacistSales();
 
         if (!$saleItems) {
@@ -101,6 +91,7 @@ class PharmacistController extends Controller
     }
 
      public function GetPharmacistPurchase(){
+       Gate::authorize('pharmacy-work');
        $PurchaseItems= $this->pharmacistRepository->GetPharmacistPurchases();
 
         if (!$PurchaseItems) {
@@ -112,6 +103,7 @@ class PharmacistController extends Controller
     }
 
     public function GetPharmacistProfile(){
+        Gate::authorize('pharmacy-work');
         $PharmacistProfile=$this->pharmacistRepository->GetPharmacistProfile();
 
        return response()->json(['data'=>new GetPharmacistProfile($PharmacistProfile)]);
@@ -119,6 +111,7 @@ class PharmacistController extends Controller
 
     }
     public function GetAllPharmacists(){
+        Gate::authorize('manage-pharmacy');
         $pharmacists=$this->pharmacistRepository->GetAllPharmacists();
 
         return GetPharmacistProfile::collection($pharmacists);
@@ -126,6 +119,7 @@ class PharmacistController extends Controller
     }
 
     public function GetAllContacts(){
+        Gate::authorize('pharmacy-work');
         $contacts= $this->pharmacistRepository->GetAllContacts();
         return response()->json(['data'=>$contacts]);
     }

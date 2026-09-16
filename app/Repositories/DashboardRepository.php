@@ -11,6 +11,7 @@ use App\Models\Purchase;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Services\Money;
 
 class DashboardRepository implements DashboardRepositoryInterface
 {
@@ -19,7 +20,11 @@ class DashboardRepository implements DashboardRepositoryInterface
         $today = Carbon::today();
 
         $salesTodayCount  = Sale::whereDate('sale_date', $today)->count();
-        $salesTodayAmount = (float) Sale::whereDate('sale_date', $today)->sum('total_price');
+        $salesTodayCents = 0;
+        foreach (Sale::whereDate('sale_date', $today)->get() as $sale) {
+            $salesTodayCents = Money::add($salesTodayCents, Money::cents($sale->total_price));
+        }
+        $salesTodayAmount = Money::decimal($salesTodayCents);
 
         $returnsTodayQty = 0;
         if (Schema::hasTable('medicine_returns')) {
@@ -41,8 +46,10 @@ class DashboardRepository implements DashboardRepositoryInterface
 
     public function getLowStock(int $limit = 10)
     {
-        return Medicine::select('id', 'name', 'quantity_in_stock', 'minimum_quantity')
-            ->whereColumn('quantity_in_stock', '<=', 'minimum_quantity')
+        $stock = '(SELECT COALESCE(SUM(available_quantity), 0) FROM medicine_batches WHERE medicine_batches.medicine_id = medicines.id)';
+        return Medicine::select('id', 'name', 'minimum_quantity')
+            ->selectRaw($stock.' AS quantity_in_stock')
+            ->whereRaw($stock.' <= medicines.minimum_quantity')
             ->orderBy('quantity_in_stock')
             ->limit($limit)
             ->get();
@@ -79,11 +86,13 @@ class DashboardRepository implements DashboardRepositoryInterface
         $start = Carbon::today()->subDays($days - 1)->startOfDay();
 
         $rows = Sale::query()
-            ->selectRaw('DATE(sale_date) as d, SUM(total_price) as total')
             ->whereBetween('sale_date', [$start, $end])
-            ->groupBy('d')
-            ->orderBy('d')
             ->get();
+        $byDay = [];
+        foreach ($rows as $sale) {
+            $day = Carbon::parse($sale->sale_date)->toDateString();
+            $byDay[$day] = Money::add($byDay[$day] ?? 0, Money::cents($sale->total_price));
+        }
 
 
         $labels = [];
@@ -91,7 +100,7 @@ class DashboardRepository implements DashboardRepositoryInterface
         for ($i = 0; $i < $days; $i++) {
             $day = $start->copy()->addDays($i)->toDateString();
             $labels[] = \Carbon\Carbon::parse($day)->format('M d');
-            $values[] = (float) ($rows->firstWhere('d', $day)->total ?? 0);
+            $values[] = Money::decimal($byDay[$day] ?? 0);
         }
 
         return ['labels' => $labels, 'values' => $values];

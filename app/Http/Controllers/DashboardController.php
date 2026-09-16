@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Repositories\Interfaces\DashboardRepositoryInterface;
 use App\Repositories\DashboardRepository;
+use Illuminate\Support\Facades\Gate;
 
 
 class DashboardController extends Controller
@@ -12,6 +13,7 @@ class DashboardController extends Controller
 
     public function index()
     {
+        Gate::authorize('manage-pharmacy');
         $summary      = $this->repo->getTodaySummary();
         $lowStock     = $this->repo->getLowStock(10);
         $expiringSoon = $this->repo->getExpiringSoon(30, 10);
@@ -33,6 +35,7 @@ class DashboardController extends Controller
 
      public function topManufacturers(DashboardRepositoryInterface $repo)
     {
+        Gate::authorize('manage-pharmacy');
         $data = $repo->getTopManufacturers(6);
         return response()->json($data);
     }

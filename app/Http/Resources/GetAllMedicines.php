@@ -26,7 +26,10 @@ class GetAllMedicines extends JsonResource
             'prescription'      => $this->prescription,
             'production_Date'   => $this->production_Date,
             'expiration_Date'   => $this->expiration_Date,
-            'quantity_in_stock' => $this->quantity_in_stock,
+            'quantity_in_stock' => $this->batches()->sum('available_quantity'),
+            'sellable_quantity' => $this->batches()->where('status', 'available')
+                ->whereDate('expiration_date', '>=', today()->toDateString())
+                ->sum('available_quantity'),
             'minimum_quantity'  => $this->minimum_quantity,
             'price'             => $this->price,
             'sci_name'          => $this->sci_name,

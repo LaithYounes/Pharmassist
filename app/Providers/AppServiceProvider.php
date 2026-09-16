@@ -20,6 +20,10 @@ use App\Repositories\Interfaces\ReportRepositoryInterface;
 use App\Repositories\ReportRepository;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Gate;
+use App\Models\Pharmacist;
+use App\Models\Sale;
+use App\Models\Purchase;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,6 +42,11 @@ class AppServiceProvider extends ServiceProvider
     }
     public function boot(): void
     {
-        //
+        Gate::define('pharmacy-work', fn ($user) => $user instanceof Pharmacist);
+        Gate::define('manage-pharmacy', fn ($user) => $user instanceof Pharmacist && (bool) $user->is_admin);
+        Gate::define('view-purchase', fn ($user, Purchase $purchase) => $user instanceof Pharmacist
+            && ((bool) $user->is_admin || (int) $purchase->pharmacist_id === (int) $user->id));
+        Gate::define('process-return', fn ($user, Sale $sale) => $user instanceof Pharmacist
+            && ((bool) $user->is_admin || (int) $sale->pharmacist_id === (int) $user->id));
     }
 }

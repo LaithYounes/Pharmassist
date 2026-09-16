@@ -1,17 +1,18 @@
 <?php
 
-use App\Models\Medicine;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Mail;
-use App\Http\Controllers\PurchaseItemController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DashboardAuthController;
 
 Route::get('/', function () {
     return view('welcome');
 });
-Route::get('/dashboard', [DashboardController::class, 'index'])
-        // احذفها لو ما بدك حماية تسجيل دخول
-     ->name('dashboard');
+Route::get('/dashboard/login', [DashboardAuthController::class, 'form'])->name('login');
+Route::post('/dashboard/login', [DashboardAuthController::class, 'login'])->name('dashboard.login');
+Route::post('/dashboard/logout', [DashboardAuthController::class, 'logout'])->middleware('auth:web')->name('dashboard.logout');
 
-Route::get('/dashboard/top-manufacturers', [DashboardController::class, 'topManufacturers'])
-    ->name('dashboard.topManufacturers');
+Route::middleware(['auth:web', 'can:manage-pharmacy'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/top-manufacturers', [DashboardController::class, 'topManufacturers'])
+        ->name('dashboard.topManufacturers');
+});

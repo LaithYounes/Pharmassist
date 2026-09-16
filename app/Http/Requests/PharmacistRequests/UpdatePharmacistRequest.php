@@ -3,6 +3,7 @@
 namespace App\Http\Requests\PharmacistRequests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 
 class UpdatePharmacistRequest extends FormRequest
 {
@@ -11,7 +12,7 @@ class UpdatePharmacistRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        return Gate::allows('manage-pharmacy');
     }
 
     /**
@@ -25,7 +26,7 @@ class UpdatePharmacistRequest extends FormRequest
             'first_name' => 'sometimes|string|max:255',
             'last_name'  => 'sometimes|string|max:255',
             'username'   => 'sometimes|string|unique:pharmacists',
-            'password'   => 'sometimes|string|min:8',
+            'password'   => 'sometimes|required|string|min:8',
             'phone'      => 'sometimes|string|unique:pharmacists',
             'salary'     => 'sometimes|int|min:0'
         ];

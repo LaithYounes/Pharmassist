@@ -1,0 +1,1789 @@
+{
+  "info": {
+    "name": "Pharmassist | واجهة الصيدلية الكاملة",
+    "description": "مجموعة API بحسب routes/api.php. شغّل المجلد 00 فقط للعرض التلقائي. تتطلب بقية عمليات الكتابة بيانات اختبار ومراجعة المدخلات قبل الإرسال.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'Accept', value: 'application/json' });"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 | تجربة جاهزة بنقرة Run",
+      "item": [
+        {
+          "name": "تسجيل دخول المدير وحفظ التوكن",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "Login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('استُلم توكن', () => pm.expect(data.token).to.be.a('string').and.not.empty);",
+                  "if (data.token) { pm.environment.set('token', data.token); pm.environment.set('currentUserId', String(data.pharmacist.id)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض الأدوية وحفظ كمية المخزون",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json().data || [];",
+                  "const preferred = pm.environment.get('preferredMedicineName');",
+                  "const medicine = rows.find(m => m.name === preferred && Number(m.sellable_quantity) > 0) || rows.find(m => Number(m.sellable_quantity) > 0);",
+                  "pm.test('يوجد دواء قابل للبيع', () => pm.expect(medicine).to.exist);",
+                  "if (medicine) { pm.environment.set('medicineId', String(medicine.id)); pm.environment.set('medicineName', medicine.name); if (medicine.categories?.[0]?.[0]) pm.environment.set('categoryName', medicine.categories[0][0]); }",
+                  "if (medicine) pm.environment.set('stockBefore', String(medicine.sellable_quantity));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "بيع وحدة واحدة وحفظ رقم الفاتورة",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/SellMedicine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "SellMedicine"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{$guid}}\",\n  \"items\": [\n    {\n      \"medicine_id\": \"{{medicineId}}\",\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('حُفظ رقم الفاتورة', () => pm.expect(data.sale_id).to.exist);",
+                  "if (data.sale_id) pm.environment.set('saleId', String(data.sale_id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض الفاتورة وحفظ معرّفات الدفعة",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sales/{{saleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "{{saleId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data || pm.response.json();",
+                  "const item = data.items?.[0]; const allocation = item?.batches?.[0];",
+                  "pm.test('الفاتورة تعرض توزيع الدفعة', () => { pm.expect(item).to.exist; pm.expect(allocation).to.exist; });",
+                  "if (item && allocation) { pm.environment.set('saleItemId', String(item.sale_item_id)); pm.environment.set('allocationId', String(allocation.sale_item_batch_allocation_id)); pm.environment.set('batchId', String(allocation.batch_id)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "إرجاع الوحدة إلى دفعتها",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ReturnMedicine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ReturnMedicine"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{$guid}}\",\n  \"sale_id\": \"{{saleId}}\",\n  \"sale_item_id\": \"{{saleItemId}}\",\n  \"sale_item_batch_allocation_id\": \"{{allocationId}}\",\n  \"quantity_returned\": 1,\n  \"reason\": \"تجربة Postman: إعادة إلى المخزون\",\n  \"condition\": \"restockable\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('تم الإرجاع', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('حُفظ طلب الإرجاع', () => pm.expect(pm.response.json().data).to.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض إرجاعات الفاتورة",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sales/{{saleId}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "{{saleId}}",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "التحقق من عودة كمية المخزون",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json().data || [];",
+                  "const medicine = rows.find(m => String(m.id) === pm.environment.get('medicineId'));",
+                  "pm.test('الإرجاع أعاد كمية الدواء القابلة للبيع', () => { pm.expect(medicine).to.exist; pm.expect(Number(medicine.sellable_quantity)).to.eql(Number(pm.environment.get('stockBefore'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض تقرير صافي المبيعات",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/net-sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "net-sales"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "شغّل هذا المجلد وحده عبر Collection Runner بعد تعبئة بيانات المدير وتشغيل API والـ seeders. يبيع وحدة واحدة ثم يعيدها إلى الدفعة نفسها. ينشئ سجلات بيع وإرجاع فعلية."
+    },
+    {
+      "name": "01 | الدخول والحسابات",
+      "item": [
+        {
+          "name": "تسجيل دخول المدير وحفظ التوكن",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "Login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('استُلم توكن', () => pm.expect(data.token).to.be.a('string').and.not.empty);",
+                  "if (data.token) { pm.environment.set('token', data.token); pm.environment.set('currentUserId', String(data.pharmacist.id)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "تسجيل دخول الصيدلي وحفظ توكنه",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "Login"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{pharmacistUsername}}\",\n  \"password\": \"{{pharmacistPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('استُلم توكن الصيدلي', () => pm.expect(data.token).to.be.a('string').and.not.empty);",
+                  "if (data.token) pm.environment.set('pharmacistToken', data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ملف المستخدم الحالي",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/PharmacistProfile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "PharmacistProfile"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض الصيادلة | مدير",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/getAllPharmacists",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "getAllPharmacists"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض جهات الاتصال",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/GetAllContacts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "GetAllContacts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "إنشاء حساب صيدلي | مدير",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/RegisterPharmasict",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "RegisterPharmasict"
+              ]
+            },
+            "description": "إنشاء الصيدلي للمدير فقط. لا يقبل is_admin. غيّر الهاتف إلى رقم فريد عند الحاجة.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Demo\",\n  \"last_name\": \"Pharmacist\",\n  \"username\": \"demo_{{$timestamp}}\",\n  \"password\": \"DemoPass123!\",\n  \"phone\": \"09{{$timestamp}}\",\n  \"salary\": \"2500.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('تم إنشاء الصيدلي', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "const data = pm.response.json(); if (data.id) pm.environment.set('pharmacistId', String(data.id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "تحديث صيدلي | مدير",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/UpdatePharmacist/{{pharmacistId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "UpdatePharmacist",
+                "{{pharmacistId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Demo\",\n  \"last_name\": \"Updated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "حذف صيدلي | مدير ⚠️",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/DeletePharmacist/{{pharmacistId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "DeletePharmacist",
+                "{{pharmacistId}}"
+              ]
+            },
+            "description": "عملية حذف فعلية؛ شغّلها على بيانات تجريبية فقط."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 | الأدوية والفئات",
+      "item": [
+        {
+          "name": "عرض الأدوية واختيار دواء متاح",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json().data || [];",
+                  "const preferred = pm.environment.get('preferredMedicineName');",
+                  "const medicine = rows.find(m => m.name === preferred && Number(m.sellable_quantity) > 0) || rows.find(m => Number(m.sellable_quantity) > 0);",
+                  "pm.test('يوجد دواء قابل للبيع', () => pm.expect(medicine).to.exist);",
+                  "if (medicine) { pm.environment.set('medicineId', String(medicine.id)); pm.environment.set('medicineName', medicine.name); if (medicine.categories?.[0]?.[0]) pm.environment.set('categoryName', medicine.categories[0][0]); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "تفاصيل دواء",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines/{{medicineId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines",
+                "{{medicineId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "بحث باسم دواء",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/Search/{{medicineName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "Search",
+                "{{medicineName}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "عرض الأدوية حسب الفئة",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/GetByCategoryName/{{categoryName}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "GetByCategoryName",
+                "{{categoryName}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "عرض كل الفئات",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/GetAllCategories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "GetAllCategories"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "إضافة دواء إلى الكتالوج | مدير",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines"
+              ]
+            },
+            "description": "الإضافة تنشئ دواء بكمية صفر؛ تزداد الكمية عند استلام دفعة.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Demo Medicine {{$timestamp}}\",\n  \"manufacturer\": \"UNIPHARMA\",\n  \"categories\": [\n    \"Analgesics & Antipyretics\"\n  ],\n  \"prescription\": \"No\",\n  \"production_Date\": \"2026-01-01\",\n  \"expiration_Date\": \"2029-01-01\",\n  \"quantity_in_stock\": 0,\n  \"sci_name\": \"Paracetamol 500 mg\",\n  \"price\": \"18.00\",\n  \"minimum_quantity\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json(); if (data.medicine?.id) pm.environment.set('medicineId', String(data.medicine.id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "تعديل سعر دواء | مدير",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines/{{medicineId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines",
+                "{{medicineId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": \"19.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "حذف دواء | مدير ⚠️",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/medicines/{{medicineId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "medicines",
+                "{{medicineId}}"
+              ]
+            },
+            "description": "عملية حذف فعلية؛ قد تفشل إن كان الدواء مرتبطاً بفواتير أو دفعات."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 | البيع والإرجاع",
+      "item": [
+        {
+          "name": "بيع وحدة واحدة وحفظ رقم الفاتورة",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/SellMedicine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "SellMedicine"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{$guid}}\",\n  \"items\": [\n    {\n      \"medicine_id\": \"{{medicineId}}\",\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('حُفظ رقم الفاتورة', () => pm.expect(data.sale_id).to.exist);",
+                  "if (data.sale_id) pm.environment.set('saleId', String(data.sale_id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "عرض الفاتورة وحفظ معرّفات الدفعة",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sales/{{saleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "{{saleId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data || pm.response.json();",
+                  "const item = data.items?.[0]; const allocation = item?.batches?.[0];",
+                  "pm.test('الفاتورة تعرض توزيع الدفعة', () => { pm.expect(item).to.exist; pm.expect(allocation).to.exist; });",
+                  "if (item && allocation) { pm.environment.set('saleItemId', String(item.sale_item_id)); pm.environment.set('allocationId', String(allocation.sale_item_batch_allocation_id)); pm.environment.set('batchId', String(allocation.batch_id)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "فواتير المستخدم",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/GetPharmacistSales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "GetPharmacistSales"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "إرجاع الوحدة إلى دفعتها",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ReturnMedicine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ReturnMedicine"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{$guid}}\",\n  \"sale_id\": \"{{saleId}}\",\n  \"sale_item_id\": \"{{saleItemId}}\",\n  \"sale_item_batch_allocation_id\": \"{{allocationId}}\",\n  \"quantity_returned\": 1,\n  \"reason\": \"تجربة Postman: إعادة إلى المخزون\",\n  \"condition\": \"restockable\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('تم الإرجاع', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('حُفظ طلب الإرجاع', () => pm.expect(pm.response.json().data).to.exist);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "إرجاعات فاتورة",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sales/{{saleId}}/returns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sales",
+                "{{saleId}}",
+                "returns"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 | طلبات التوريد ودورة الحالات",
+      "item": [
+        {
+          "name": "عرض مندوبي التوريد وحفظ أول معرّف",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/SalesRep",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "SalesRep"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json().data || pm.response.json();",
+                  "if (Array.isArray(rows) && rows[0]?.id) pm.environment.set('saleRepresentativeId', String(rows[0].id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "إنشاء طلب توريد",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/SupplyRequest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "SupplyRequest"
+              ]
+            },
+            "description": "استجابة الإنشاء لا تتضمن purchase_id حالياً؛ اطلب قائمة التوريد بعدها لحفظ أحدث معرّف.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sale_representative_id\": \"{{saleRepresentativeId}}\",\n  \"items\": [\n    {\n      \"medicine_name\": \"{{medicineName}}\",\n      \"quantity\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "عرض طلبات التوريد وحفظ أحدث معرّف",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/GetPharmacistPurchase",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "GetPharmacistPurchase"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json().data || [];",
+                  "const newest = rows.reduce((best, row) => !best || Number(row.purchase_id) > Number(best.purchase_id) ? row : best, null);",
+                  "if (newest) pm.environment.set('purchaseId', String(newest.purchase_id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "تفاصيل دورة الطلب وحفظ معرّف البند",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/purchases/{{purchaseId}}/lifecycle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "purchases",
+                "{{purchaseId}}",
+                "lifecycle"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json(); const item = data.items?.[0];",
+                  "if (item) { pm.environment.set('purchaseItemId', String(item.purchase_item_id)); pm.environment.set('purchaseMedicineId', String(item.medicine_id)); pm.environment.set('quantityRequested', String(item.quantity_requested)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "رفع ملف السعر للطلب | مدير",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/purchases/{{purchaseId}}/price",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "purchases",
+                "{{purchaseId}}",
+                "price"
+              ]
+            },
+            "description": "اختر ملف xlsx/xls المُصدَّر لهذا الطلب. يجب أن تتطابق البنود والكميات؛ الرفع لا يغيّر المخزون.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "رفع ملف سعر بالمسار القديم | مدير",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ImportPricedSuppOrder",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ImportPricedSuppOrder"
+              ]
+            },
+            "description": "بديل للمسار المرتبط بالطلب؛ لا تشغّل الاثنين للطلب نفسه.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "purchase_id",
+                  "value": "{{purchaseId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "الموافقة على طلب مُسعّر | مدير",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/purchases/{{purchaseId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "purchases",
+                "{{purchaseId}}",
+                "approve"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "استلام دفعة بعد الموافقة",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/purchases/{{purchaseId}}/receive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "purchases",
+                "{{purchaseId}}",
+                "receive"
+              ]
+            },
+            "description": "شغّل تفاصيل دورة الطلب أولاً لالتقاط معرّف البند. عدّل batches بحيث تغطي جميع البنود وبالكميات المستلمة الصحيحة. الاستلام مرة واحدة فقط.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batches\": [\n    {\n      \"purchase_item_id\": \"{{purchaseItemId}}\",\n      \"medicine_id\": \"{{purchaseMedicineId}}\",\n      \"batch_number\": \"POSTMAN-{{$guid}}\",\n      \"expiration_date\": \"{{futureExpiryDate}}\",\n      \"quantity_received\": \"{{quantityRequested}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() + 2); pm.environment.set('futureExpiryDate', d.toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('تم إنشاء السجل', () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json(); if (data.receipt_id) pm.environment.set('receiptId', String(data.receipt_id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "رفض طلب | مدير",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/purchases/{{purchaseId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "purchases",
+                "{{purchaseId}}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"سبب رفض تجريبي\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "إلغاء طلب",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/purchases/{{purchaseId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "purchases",
+                "{{purchaseId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"سبب إلغاء تجريبي\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "التسلسل الصحيح: Requested → Priced → Approved → Received. اختر ملف الأسعار يدوياً؛ طلبات الرفض والإلغاء تغيّر الحالة."
+    },
+    {
+      "name": "05 | الدفعات وحركات المخزون",
+      "item": [
+        {
+          "name": "سجل حركات دفعة | مدير",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/batches/{{batchId}}/movements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "batches",
+                "{{batchId}}",
+                "movements"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "تصحيح جرد دفعة | مدير ⚠️",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/batches/{{batchId}}/adjustments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "batches",
+                "{{batchId}}",
+                "adjustments"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{$guid}}\",\n  \"quantity_delta\": 1,\n  \"reason\": \"تصحيح جرد تجريبي\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "تسجيل تلف دفعة | مدير ⚠️",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/batches/{{batchId}}/damage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "batches",
+                "{{batchId}}",
+                "damage"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"request_id\": \"{{$guid}}\",\n  \"quantity_delta\": -1,\n  \"reason\": \"تلف تجريبي\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 | التقارير | مدير",
+      "item": [
+        {
+          "name": "صافي المبيعات",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/net-sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "net-sales"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "صافي المبيعات اليومي",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/daily/{{reportDate}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "daily",
+                "{{reportDate}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "صافي المبيعات الشهري",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/monthly/{{reportYear}}/{{reportMonth}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "monthly",
+                "{{reportYear}}",
+                "{{reportMonth}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('نجح الطلب', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

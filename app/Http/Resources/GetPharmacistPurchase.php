@@ -18,10 +18,16 @@ class GetPharmacistPurchase extends JsonResource
         'pharmacist'=>$pharmacist->first_name . ' ' . $pharmacist->last_name,
         'Purchase Date'=>$this->purchase_date,
         'items' => $this->purchaseItems->map(function ($item) {
+            $received = (int) ($this->receipt?->lines->where('purchase_item_id', $item->id)->sum('quantity_received') ?? 0);
             return [
                 'medicine_name' => optional($item->medicine)->name,
                 'quantity' => $item->quantity,
                 'price' => $item->price,
+                'quantity_requested' => (int) $item->quantity,
+                'quantity_received' => $received,
+                'quantity_short' => (int) $item->quantity - $received,
+                'unit_purchase_cost' => $item->price,
+                'catalog_sale_price' => $item->medicine?->price,
             ];
         })->values(), 
     ];

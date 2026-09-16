@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Repositories\ReportRepository;
 use App\Repositories\Interfaces\ReportRepositoryInterface;
+use Illuminate\Support\Facades\Gate;
 class ReportController extends Controller
 {
     protected $reportRepo;
@@ -14,25 +15,29 @@ class ReportController extends Controller
 }
     public function netSales()
     {
+        Gate::authorize('manage-pharmacy');
         return response()->json([
-            'net_sales' => $this->reportRepo->getNetSales()
+            ...$this->reportRepo->summary()
         ]);
     }
 
     public function dailyNetSales($date = null)
     {
+        Gate::authorize('manage-pharmacy');
         return response()->json([
             'date' => $date ?? now()->toDateString(),
-            'net_sales' => $this->reportRepo->getDailyNetSales($date)
+            ...$this->reportRepo->summary($date ?? now()->toDateString(), $date ?? now()->toDateString())
         ]);
     }
 
     public function monthlyNetSales($year, $month)
     {
+        Gate::authorize('manage-pharmacy');
         return response()->json([
             'year' => $year,
             'month' => $month,
-            'net_sales' => $this->reportRepo->getMonthlyNetSales($year, $month)
+            ...$this->reportRepo->summary(sprintf('%04d-%02d-01', $year, $month),
+                date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $year, $month))))
         ]);
     }
 }

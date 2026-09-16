@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use App\Repositories\PurchaseItemRepository;
 use App\Repositories\Interfaces\PurchaseItemsRepositoryInterface;
 use App\Models\Purchase;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 class PurchaseItemController extends Controller
 {
     protected $purchaseItemRepository;
@@ -54,6 +56,7 @@ class PurchaseItemController extends Controller
 
    public function MakeSupplyOrder(MakeSupplyOrderRequest $request)
     {
+        Gate::authorize('pharmacy-work');
         $validated = $request->validated();
 
         $items = $validated['items'];
@@ -69,14 +72,19 @@ class PurchaseItemController extends Controller
         return $response;
     }
 
-   public function importPricedOrder(Request $request)
+    public function importPricedOrder(Request $request, ?Purchase $purchase = null)
     {
+        Gate::authorize('manage-pharmacy');
         $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls'
+            'file' => 'required|file|mimes:xlsx,xls|max:5120',
+            'purchase_id' => 'sometimes|integer|min:1',
         ]);
 
-        $file = $request->file('file');
-        $filePath = $file->storeAs('public', 'priced_order_' . time() . '.xlsx');
-
-        return $this->purchaseItemRepository->ImportPricedSupplyOrder(storage_path('app/' . $filePath));}
+        $result = $this->purchaseItemRepository->ImportPricedSupplyOrder(
+            $request->file('file')->getRealPath(), $purchase?->id ?? ($request->integer('purchase_id') ?: null)
+        );
+        $code = $result['status'] ? 200 : ($result['http_status'] ?? 422);
+        unset($result['http_status']);
+        return response()->json($result, $code);
+    }
 }

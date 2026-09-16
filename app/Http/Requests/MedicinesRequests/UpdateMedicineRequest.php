@@ -3,6 +3,7 @@
 namespace App\Http\Requests\MedicinesRequests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 
 class UpdateMedicineRequest extends FormRequest
 {
@@ -11,7 +12,7 @@ class UpdateMedicineRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        return Gate::allows('manage-pharmacy');
     }
 
 
@@ -24,10 +25,10 @@ class UpdateMedicineRequest extends FormRequest
             'prescription' => 'sometimes|nullable|string',
             'production_date' => 'sometimes|date',
             'expiration_date' => 'sometimes|date|after_or_equal:production_date',
-            'quantity_in_stock' => 'sometimes|integer|min:0',
+            'quantity_in_stock' => 'prohibited',
             'barcode' => 'sometimes|string',
             'sci_name' => 'sometimes|string',
-            'price' => 'sometimes|numeric|min:0',
+            'price' => ['sometimes', 'regex:/^(0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/D'],
             'minimum_quantity'=>'sometimes|numeric|min:0'
         ];
     }

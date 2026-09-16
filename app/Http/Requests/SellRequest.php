@@ -19,6 +19,7 @@ class SellRequest extends FormRequest
             'items' => 'required|array|min:1',
             'items.*.medicine_id' => 'required|exists:medicines,id',
             'items.*.quantity' => 'required|integer|min:1',
+            'request_id' => 'sometimes|uuid',
         ];
     }
 }

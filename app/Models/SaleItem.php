@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class SaleItem extends Model
 {
     protected $guarded=['id'];
+    protected $casts = ['quantity' => 'integer', 'price' => 'decimal:2'];
 
     public function sale() {
         return $this->belongsTo(Sale::class);
@@ -14,6 +15,9 @@ class SaleItem extends Model
 
     public function medicine() {
         return $this->belongsTo(Medicine::class);
+    }
+    public function batchAllocations() {
+        return $this->hasMany(SaleItemBatchAllocation::class);
     }
     public function medicineReturns()
     {

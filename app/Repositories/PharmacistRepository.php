@@ -10,6 +10,7 @@ use App\Models\SaleItem;
 use App\Repositories\Interfaces\PharmacistRepositoryInterface;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Gate;
 use App\Http\Requests\UpdatePharmacistRequest;
 use Illuminate\Support\Collection;
 
@@ -36,7 +37,7 @@ class PharmacistRepository implements PharmacistRepositoryInterface
             'phone'      => $data['phone'],
             'employment_date' => now(),
             'salary' =>$data['salary'],
-            'is_admin'=>$data['is_admin']
+            'is_admin'=>false
         ]);
 
         return $pharmacist;
@@ -44,11 +45,7 @@ class PharmacistRepository implements PharmacistRepositoryInterface
 
     public function delete(int $id): bool
     {
-        $currentUser = Auth::user(); // الصيدلي الحالي المسجّل دخوله
-
-        if (!$currentUser->is_admin) {
-        throw new \Exception("You are not authorized to delete pharmacists.");
-    }
+        $currentUser = Auth::user();
 
 
     if ($currentUser->id === $id) {
@@ -82,7 +79,8 @@ class PharmacistRepository implements PharmacistRepositoryInterface
     public function GetPharmacistSales()
     {
 
-       $sales = Sale::with(['pharmacist', 'salesItems.medicine'])
+       $sales = Sale::with(['pharmacist', 'salesItems.medicine', 'salesItems.batchAllocations.batch'])
+        ->when(Gate::denies('manage-pharmacy'), fn ($query) => $query->where('pharmacist_id', Auth::id()))
         ->orderByDesc('sale_date')
         ->get();
 
@@ -93,7 +91,9 @@ class PharmacistRepository implements PharmacistRepositoryInterface
     public function GetPharmacistPurchases()
     {
 
-    $purchases = Purchase::with(['pharmacist', 'PurchaseItems.medicine'])->get();
+    $purchases = Purchase::with(['pharmacist', 'PurchaseItems.medicine', 'receipt.lines'])
+        ->when(Gate::denies('manage-pharmacy'), fn ($query) => $query->where('pharmacist_id', Auth::id()))
+        ->get();
 
     return $purchases;
 
@@ -117,13 +117,8 @@ class PharmacistRepository implements PharmacistRepositoryInterface
     {
         $pharmacist = Pharmacist::findOrFail($id);
 
-        // تعامل مع كلمة المرور إن أُرسلت
         if (array_key_exists('password', $data)) {
-            if (empty($data['password'])) {
-                unset($data['password']);
-            } else {
-                $data['password'] = Hash::make($data['password']);
-            }
+            $data['password'] = Hash::make($data['password']);
         }
 
         $pharmacist->update($data);

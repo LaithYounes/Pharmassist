@@ -14,6 +14,7 @@ class Pharmacist extends Authenticatable
     use HasFactory,HasApiTokens;
     protected $guarded=['id'];
     protected $hidden = ['password'];
+    protected $casts = ['salary' => 'decimal:2', 'is_admin' => 'boolean'];
 
     public function sales() {
         return $this->hasMany(Sale::class);

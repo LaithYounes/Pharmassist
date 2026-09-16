@@ -8,6 +8,7 @@ use App\Http\Resources\GetAllMedicines;
 use App\Repositories\Interfaces\MedicineRepositoryInterface;
 use App\Models\Manufacturer;
 use App\Models\Category;
+use Illuminate\Support\Facades\Gate;
 
 class MedicineController extends Controller
 {
@@ -28,6 +29,7 @@ class MedicineController extends Controller
 
     public function store(StoreMedicineRequest $request)
 {
+    Gate::authorize('manage-pharmacy');
 
     $manufacturer = Manufacturer::where('company_name', $request->manufacturer)->first();
 
@@ -61,6 +63,7 @@ class MedicineController extends Controller
 
     public function update(UpdateMedicineRequest $request, $id)
     {
+        Gate::authorize('manage-pharmacy');
         $updatedMedicine = $this->medicineRepository->update($id, $request->validated());
 
         return response()->json([
@@ -71,6 +74,7 @@ class MedicineController extends Controller
 
     public function destroy(int $id)
     {
+        Gate::authorize('manage-pharmacy');
         $this->medicineRepository->delete($id);
         return response()->json(['message'=>'Medicine deleted successfully'],200);
     }

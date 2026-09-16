@@ -3,13 +3,14 @@
 namespace App\Http\Requests\MedicinesRequests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 
 class StoreMedicineRequest extends FormRequest
 {
 
     public function authorize(): bool
     {
-        return true;
+        return Gate::allows('manage-pharmacy');
     }
 
 
@@ -23,9 +24,9 @@ class StoreMedicineRequest extends FormRequest
             'prescription'=>'string',
             'production_Date'=>'required|Date',
             'expiration_Date'=>'required|date|after_or_equal:production_date',
-            'quantity_in_stock'=>'required|integer|min:0',
+            'quantity_in_stock'=>'required|integer|in:0',
             'sci_name'=>'required|string',
-            'price' => 'required|numeric|min:0',
+            'price' => ['required', 'regex:/^(0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/D'],
             'minimum_quantity'=>'required|numeric|min:0'
         ];
     }

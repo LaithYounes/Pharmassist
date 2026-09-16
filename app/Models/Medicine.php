@@ -8,10 +8,15 @@ class Medicine extends Model
 {
     protected $guarded=['id'];
     protected $table='medicines';
+    protected $casts = ['price' => 'decimal:2', 'quantity_in_stock' => 'integer'];
 
 
     public function manufacturer() {
         return $this->belongsTo(Manufacturer::class);
+    }
+
+    public function batches() {
+        return $this->hasMany(MedicineBatch::class);
     }
 
     public function salesItems() {
